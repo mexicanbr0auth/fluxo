@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Fluxo" parent="Base.Theme.Fluxo">
+        <item name="android:windowSplashScreenBackground">@color/splash_light</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_light</item>
+    </style>
+
+    <style name="Theme.Fluxo.Dark" parent="Base.Theme.Fluxo.Dark">
+        <item name="android:windowSplashScreenBackground">@color/splash_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_dark</item>
+    </style>
+</resources>

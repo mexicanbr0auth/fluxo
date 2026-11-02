@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface_fallback">#FFFBFE</color>
+    <color name="surface_fallback_dark">#141318</color>
+    <color name="icon_bg_start">#6750A4</color>
+    <color name="icon_bg_end">#B69DF8</color>
+    <color name="splash_light">#FEF7FF</color>
+    <color name="splash_dark">#141218</color>
+</resources>

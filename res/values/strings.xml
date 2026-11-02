@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fluxo</string>
+    <string name="title_tasks">Minhas tarefas</string>
+    <string name="title_stats">Estatísticas</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="hint_search">Buscar tarefas</string>
+    <string name="new_task">Nova tarefa</string>
+    <string name="save">Salvar</string>
+    <string name="today">Hoje</string>
+    <string name="tomorrow">Amanhã</string>
+    <string name="empty_title">Tudo em ordem</string>
+    <string name="empty_sub">Crie sua primeira tarefa e comece a organizar o seu dia.</string>
+    <string name="nav_tasks">Tarefas</string>
+    <string name="nav_stats">Estatísticas</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="stat_today">Hoje</string>
+    <string name="stat_overdue">Atrasadas</string>
+    <string name="stat_high">Alta prioridade</string>
+    <string name="chart_title">Concluídas nos últimos 7 dias</string>
+    <string name="priority_title">Por prioridade</string>
+    <string name="category_title">Por categoria</string>
+    <string name="label_category">Categoria</string>
+    <string name="label_priority">Prioridade</string>
+    <string name="label_due">Prazo</string>
+    <string name="label_repeat">Repetição</string>
+    <string name="label_time">Horário</string>
+    <string name="hint_title">O que você precisa fazer?</string>
+    <string name="hint_notes">Adicionar detalhes…</string>
+    <string name="due_none">Sem prazo definido</string>
+    <string name="delete_task">Excluir tarefa</string>
+    <string name="editor_new">Nova tarefa</string>
+    <string name="editor_edit">Editar tarefa</string>
+</resources>
