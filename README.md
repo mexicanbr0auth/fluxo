@@ -2,7 +2,7 @@
 
 Gerenciador de tarefas minimalista para Android com **Material You 3**, interface em português e dados 100% locais.
 
-![Tela principal do Fluxo](docs/preview.png)
+![Tela principal do Fluxo](docs/preview.jpg)
 
 > **Baixe o APK na aba [Releases](../../releases).**
 
