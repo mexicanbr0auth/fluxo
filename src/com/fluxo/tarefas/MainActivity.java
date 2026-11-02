@@ -17,6 +17,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -91,6 +92,7 @@ public class MainActivity extends Activity {
     private TextView settingsTitle, settingsSubtitle;
 
     private boolean entranceDone = false;
+    private int lastNavInset = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -290,8 +292,9 @@ public class MainActivity extends Activity {
         emptyAction.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         emptyAction.setBackground(Ui.rippleBg(this, p.primary, 999, Ui.withAlpha(p.onPrimary, 0x33)));
 
-        bottomNav.setBackgroundColor(p.surfaceContainer);
-        findViewById(R.id.nav_divider).setBackgroundColor(Ui.withAlpha(p.outlineVariant, 0xCC));
+        bottomNav.setBackground(Ui.shapeStroke(this, p.surfaceContainerHigh, 999,
+                Ui.withAlpha(p.outlineVariant, 0x66), 1));
+        bottomNav.setElevation(Ui.dp(this, 10));
         navTasksIcon.setImageResource(R.drawable.ic_tasklist);
         navStatsIcon.setImageResource(R.drawable.ic_chart);
         navSettingsIcon.setImageResource(R.drawable.ic_tune);
@@ -346,11 +349,49 @@ public class MainActivity extends Activity {
     private void applyInsets() {
         int status = Theme.statusBarHeight(this);
         tasksContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
-                Ui.dp(this, 20), Ui.dp(this, 116));
+                Ui.dp(this, 20), Ui.dp(this, 184));
         statsContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
-                Ui.dp(this, 20), Ui.dp(this, 32));
+                Ui.dp(this, 20), Ui.dp(this, 120));
         settingsContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
-                Ui.dp(this, 20), Ui.dp(this, 32));
+                Ui.dp(this, 20), Ui.dp(this, 120));
+
+        View root = findViewById(R.id.main_root);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int nav;
+            if (Build.VERSION.SDK_INT >= 30) {
+                nav = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            } else {
+                nav = insets.getSystemWindowInsetBottom();
+            }
+            if (nav != lastNavInset) {
+                lastNavInset = nav;
+                applyBottomInset(nav);
+            }
+            return insets;
+        });
+        root.requestApplyInsets();
+    }
+
+    /** Mantém a barra flutuante e o FAB acima da área de navegação do sistema. */
+    private void applyBottomInset(int navInset) {
+        int status = Theme.statusBarHeight(this);
+
+        ViewGroup.MarginLayoutParams navLp =
+                (ViewGroup.MarginLayoutParams) bottomNav.getLayoutParams();
+        navLp.bottomMargin = Ui.dp(this, 18) + navInset;
+        bottomNav.setLayoutParams(navLp);
+
+        ViewGroup.MarginLayoutParams fabLp =
+                (ViewGroup.MarginLayoutParams) fab.getLayoutParams();
+        fabLp.bottomMargin = Ui.dp(this, 108) + navInset;
+        fab.setLayoutParams(fabLp);
+
+        tasksContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
+                Ui.dp(this, 20), Ui.dp(this, 184) + navInset);
+        statsContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
+                Ui.dp(this, 20), Ui.dp(this, 120) + navInset);
+        settingsContent.setPadding(Ui.dp(this, 20), status + Ui.dp(this, 10),
+                Ui.dp(this, 20), Ui.dp(this, 120) + navInset);
     }
 
     // ------------------------------------------------------------------ listeners / nav
