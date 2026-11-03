@@ -22,6 +22,7 @@ import android.widget.TextView;
 
 import com.fluxo.tarefas.data.Store;
 import com.fluxo.tarefas.model.Task;
+import com.fluxo.tarefas.reminder.ReminderScheduler;
 import com.fluxo.tarefas.ui.Dates;
 import com.fluxo.tarefas.ui.Palette;
 import com.fluxo.tarefas.ui.Theme;
@@ -44,6 +45,7 @@ public class EditorActivity extends android.app.Activity {
     private int priority = 0;
     private String category = "";
     private int repeat = 0;
+    private int weekdays = 0;
 
     private String initialTitle = "";
     private String initialNotes = "";
@@ -52,8 +54,10 @@ public class EditorActivity extends android.app.Activity {
     private long initialDue = 0L;
     private boolean initialHasTime = false;
     private int initialRepeat = 0;
+    private int initialWeekdays = 0;
 
-    private LinearLayout topbar, content, categoryChips, priorityChips, dateChips, timeChips, repeatChips;
+    private LinearLayout topbar, content, categoryChips, priorityChips, dateChips,
+            timeChips, repeatChips, weekdayChips;
     private ImageButton btnClose;
     private TextView editorTitle, btnSave, btnDelete, dueSummary,
             labelCategory, labelPriority, labelDue, labelRepeat;
@@ -83,6 +87,7 @@ public class EditorActivity extends android.app.Activity {
             priority = task.priority;
             category = task.category;
             repeat = task.repeat;
+            weekdays = task.weekdays;
         } else {
             isNew = true;
         }
@@ -93,6 +98,7 @@ public class EditorActivity extends android.app.Activity {
             priority = savedInstanceState.getInt("priority", priority);
             category = savedInstanceState.getString("category", category);
             repeat = savedInstanceState.getInt("repeat", repeat);
+            weekdays = savedInstanceState.getInt("weekdays", weekdays);
         }
 
         roleSetup();
@@ -112,6 +118,7 @@ public class EditorActivity extends android.app.Activity {
         initialDue = dueAt;
         initialHasTime = hasTime;
         initialRepeat = repeat;
+        initialWeekdays = weekdays;
 
         buildCategoryChips();
         buildPriorityChips();
@@ -127,6 +134,7 @@ public class EditorActivity extends android.app.Activity {
         dateChips = findViewById(R.id.date_chips);
         timeChips = findViewById(R.id.time_chips);
         repeatChips = findViewById(R.id.repeat_chips);
+        weekdayChips = findViewById(R.id.weekday_chips);
         btnClose = findViewById(R.id.btn_close);
         editorTitle = findViewById(R.id.editor_title);
         btnSave = findViewById(R.id.btn_save);
@@ -203,7 +211,10 @@ public class EditorActivity extends android.app.Activity {
         btnSave.setOnClickListener(v -> save());
         btnDelete.setOnClickListener(v -> Ui.confirm(this, p, "Excluir tarefa?",
                 "Essa ação não pode ser desfeita.", "Excluir", true, () -> {
-                    if (task != null) Store.delete(this, task.id);
+                    if (task != null) {
+                        Store.delete(this, task.id);
+                        ReminderScheduler.cancel(this, task.id);
+                    }
                     saved = true;
                     finish();
                     overridePendingTransition(R.anim.fade_in, R.anim.slide_out_down);
@@ -345,6 +356,7 @@ public class EditorActivity extends android.app.Activity {
         buildDateChips();
         buildTimeChips();
         buildRepeatChips();
+        buildWeekdayChips();
         updateDueSummary();
     }
 
@@ -395,7 +407,7 @@ public class EditorActivity extends android.app.Activity {
             text = "Prazo: " + Dates.dueSummary(dueAt, hasTime);
         }
         if (repeat > 0) {
-            text += "\n" + Dates.repeatSummary(repeat);
+            text += "\n" + Dates.repeatSummary(repeat, weekdays);
             if (hasTime) text += " às " + Dates.time(dueAt);
         }
         dueSummary.setText(text);
@@ -403,7 +415,8 @@ public class EditorActivity extends android.app.Activity {
 
     private void buildRepeatChips() {
         repeatChips.removeAllViews();
-        String[] labels = {"Não repetir", "Diária", "Dias úteis", "Semanal", "Mensal"};
+        String[] labels = {"Não repetir", "Diária", "Dias úteis", "Semanal", "Mensal",
+                "Por dia"};
         for (int i = 0; i < labels.length; i++) {
             final int value = i;
             addChip(repeatChips, labels[i], repeat == value, () -> {
@@ -412,8 +425,68 @@ public class EditorActivity extends android.app.Activity {
                     dueAt = dayStart(0);
                     hasTime = false;
                 }
+                if (repeat == 5) weekdays = 0;
                 refreshDueUi();
             });
+        }
+    }
+
+    /** Chips de dias da semana, visíveis apenas no modo "Dias da semana". */
+    private void buildWeekdayChips() {
+        weekdayChips.removeAllViews();
+        if (repeat != 5) {
+            weekdayChips.setVisibility(View.GONE);
+            return;
+        }
+        weekdayChips.setVisibility(View.VISIBLE);
+
+        String[] labels = {"Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"};
+        int[] bits = {Dates.MONDAY, Dates.TUESDAY, Dates.WEDNESDAY, Dates.THURSDAY,
+                Dates.FRIDAY, Dates.SATURDAY, Dates.SUNDAY};
+
+        LinearLayout row = null;
+        for (int i = 0; i < labels.length; i++) {
+            if (i % 4 == 0) {
+                row = Ui.row(this);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (i > 0) rowLp.topMargin = Ui.dp(this, 8);
+                weekdayChips.addView(row, rowLp);
+            }
+            final int bit = bits[i];
+            addChip(row, labels[i], (weekdays & bit) != 0, () -> {
+                int next = weekdays ^ bit;
+                if (next == 0) {
+                    Ui.snackbar(this, p, "Escolha pelo menos um dia", null, null, 18);
+                    return;
+                }
+                weekdays = next;
+                snapDueToWeekdays();
+                refreshDueUi();
+            });
+        }
+    }
+
+    /** Move o prazo para o próximo dia marcado, mantendo o horário. */
+    private void snapDueToWeekdays() {
+        if (repeat != 5 || weekdays == 0 || dueAt <= 0) return;
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(dueAt);
+        if ((weekdays & Dates.weekdayBit(c.get(Calendar.DAY_OF_WEEK))) != 0) return;
+
+        Calendar base = Calendar.getInstance();
+        base.setTimeInMillis(dueAt);
+        for (int i = 0; i < 7; i++) {
+            base.add(Calendar.DAY_OF_YEAR, 1);
+            if ((weekdays & Dates.weekdayBit(base.get(Calendar.DAY_OF_WEEK))) != 0) {
+                base.set(Calendar.HOUR_OF_DAY, c.get(Calendar.HOUR_OF_DAY));
+                base.set(Calendar.MINUTE, c.get(Calendar.MINUTE));
+                base.set(Calendar.SECOND, 0);
+                base.set(Calendar.MILLISECOND, 0);
+                dueAt = base.getTimeInMillis();
+                return;
+            }
         }
     }
 
@@ -495,7 +568,8 @@ public class EditorActivity extends android.app.Activity {
                 || priority != initialPriority
                 || dueAt != initialDue
                 || hasTime != initialHasTime
-                || repeat != initialRepeat;
+                || repeat != initialRepeat
+                || weekdays != initialWeekdays;
     }
 
     private void save() {
@@ -507,6 +581,10 @@ public class EditorActivity extends android.app.Activity {
             return;
         }
         if (task == null) task = Task.create(title);
+        if (repeat == 5 && weekdays == 0) {
+            Ui.snackbar(this, p, "Escolha pelo menos um dia da semana", null, null, 18);
+            return;
+        }
         task.title = title;
         task.notes = etNotes.getText().toString().trim();
         task.category = category;
@@ -514,7 +592,9 @@ public class EditorActivity extends android.app.Activity {
         task.dueAt = dueAt;
         task.hasTime = hasTime;
         task.repeat = repeat;
+        task.weekdays = repeat == 5 ? weekdays : 0;
         Store.upsert(this, task);
+        ReminderScheduler.schedule(this, task);
         saved = true;
         Ui.hideKeyboard(this);
         setResult(RESULT_OK);
@@ -549,6 +629,7 @@ public class EditorActivity extends android.app.Activity {
         outState.putInt("priority", priority);
         outState.putString("category", category);
         outState.putInt("repeat", repeat);
+        outState.putInt("weekdays", weekdays);
         super.onSaveInstanceState(outState);
     }
 

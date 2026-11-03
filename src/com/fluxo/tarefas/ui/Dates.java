@@ -11,7 +11,32 @@ public final class Dates {
 
     public static final Locale PT = Locale.forLanguageTag("pt-BR");
 
+    /** Máscara de dias da semana: bit de Calendar.DAY_OF_WEEK - 1. */
+    public static final int MONDAY = 1 << 1;
+    public static final int TUESDAY = 1 << 2;
+    public static final int WEDNESDAY = 1 << 3;
+    public static final int THURSDAY = 1 << 4;
+    public static final int FRIDAY = 1 << 5;
+    public static final int SATURDAY = 1 << 6;
+    public static final int SUNDAY = 1 << 0;
+
+    private static final int[] WEEK_ORDER = {
+            MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY};
+    private static final String[] WEEK_SHORT = {
+            "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"};
+    private static final String[] WEEK_FULL = {
+            "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+            "sexta-feira", "sábado", "domingo"};
+
     private Dates() {
+    }
+
+    public static int weekdayBit(int calendarDay) {
+        return 1 << (calendarDay - 1);
+    }
+
+    public static int todayWeekdayBit() {
+        return weekdayBit(Calendar.getInstance().get(Calendar.DAY_OF_WEEK));
     }
 
     public static long startOfDay(long millis) {
@@ -85,6 +110,10 @@ public final class Dates {
 
     /** Rótulo curto usado nos cartões e chips. */
     public static String repeatLabel(int repeat) {
+        return repeatLabel(repeat, 0);
+    }
+
+    public static String repeatLabel(int repeat, int weekdays) {
         switch (repeat) {
             case 1:
                 return "Diária";
@@ -94,6 +123,8 @@ public final class Dates {
                 return "Semanal";
             case 4:
                 return "Mensal";
+            case 5:
+                return weekdays == 0 ? "Personalizado" : weekdaysShort(weekdays);
             default:
                 return "";
         }
@@ -101,6 +132,10 @@ public final class Dates {
 
     /** Frase completa usada no editor. */
     public static String repeatSummary(int repeat) {
+        return repeatSummary(repeat, 0);
+    }
+
+    public static String repeatSummary(int repeat, int weekdays) {
         switch (repeat) {
             case 1:
                 return "Repete todos os dias";
@@ -110,9 +145,52 @@ public final class Dates {
                 return "Repete toda semana";
             case 4:
                 return "Repete todo mês";
+            case 5:
+                if (weekdays == 0) return "Escolha os dias da semana";
+                if (isSingleDay(weekdays)) {
+                    int i = indexOf(weekdays);
+                    boolean masculine = i >= 5;
+                    return "Repete " + (masculine ? "todo " : "toda ") + WEEK_FULL[i];
+                }
+                return "Repete em " + weekdaysShort(weekdays);
             default:
                 return "";
         }
+    }
+
+    /** Ex.: "Seg, Qua e Sex". */
+    public static String weekdaysShort(int mask) {
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        int last = -1;
+        for (int i = 0; i < WEEK_ORDER.length; i++) {
+            if ((mask & WEEK_ORDER[i]) != 0) {
+                count++;
+                last = i;
+            }
+        }
+        int seen = 0;
+        for (int i = 0; i < WEEK_ORDER.length; i++) {
+            if ((mask & WEEK_ORDER[i]) == 0) continue;
+            seen++;
+            if (seen > 1) {
+                if (seen == count) sb.append(" e ");
+                else sb.append(", ");
+            }
+            sb.append(WEEK_SHORT[i]);
+        }
+        return sb.toString();
+    }
+
+    private static boolean isSingleDay(int mask) {
+        return mask != 0 && (mask & (mask - 1)) == 0;
+    }
+
+    private static int indexOf(int singleBit) {
+        for (int i = 0; i < WEEK_ORDER.length; i++) {
+            if (WEEK_ORDER[i] == singleBit) return i;
+        }
+        return 0;
     }
 
     /**
@@ -120,18 +198,22 @@ public final class Dates {
      * Mantém o horário do prazo e sempre retorna uma data futura em relação a agora.
      */
     public static long nextOccurrence(long dueAt, int repeat, long now) {
+        return nextOccurrence(dueAt, repeat, 0, now);
+    }
+
+    public static long nextOccurrence(long dueAt, int repeat, int weekdays, long now) {
         if (repeat <= 0) return 0L;
         Calendar c = Calendar.getInstance();
         c.setTimeInMillis(dueAt > 0 ? dueAt : startOfDay(now));
         int guard = 0;
         do {
-            advance(c, repeat);
+            advance(c, repeat, weekdays);
             guard++;
         } while (c.getTimeInMillis() <= now && guard < 800);
         return c.getTimeInMillis();
     }
 
-    private static void advance(Calendar c, int repeat) {
+    private static void advance(Calendar c, int repeat, int weekdays) {
         switch (repeat) {
             case 1: // diária
                 c.add(Calendar.DAY_OF_YEAR, 1);
@@ -144,6 +226,15 @@ public final class Dates {
                 break;
             case 4: // mensal
                 c.add(Calendar.MONTH, 1);
+                break;
+            case 5: // dias escolhidos da semana
+                if (weekdays == 0) {
+                    c.add(Calendar.DAY_OF_YEAR, 7);
+                    break;
+                }
+                do {
+                    c.add(Calendar.DAY_OF_YEAR, 1);
+                } while ((weekdays & weekdayBit(c.get(Calendar.DAY_OF_WEEK))) == 0);
                 break;
             case 3: // semanal
             default:

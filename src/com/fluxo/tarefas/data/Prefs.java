@@ -68,4 +68,13 @@ public final class Prefs {
     public static void setName(Context c, String v) {
         sp(c).edit().putString("name", v).apply();
     }
+
+    /** Lembretes com alarme e notificação ativados. */
+    public static boolean remindersEnabled(Context c) {
+        return sp(c).getBoolean("reminders", true);
+    }
+
+    public static void setRemindersEnabled(Context c, boolean v) {
+        sp(c).edit().putBoolean("reminders", v).apply();
+    }
 }

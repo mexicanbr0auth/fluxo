@@ -15,8 +15,10 @@ public class Task {
     public long dueAt = 0L;
     public long createdAt = 0L;
     public long completedAt = 0L;
-    /** 0 = não repete, 1 = diária, 2 = dias úteis, 3 = semanal, 4 = mensal */
+    /** 0 = não repete, 1 = diária, 2 = dias úteis, 3 = semanal, 4 = mensal, 5 = dias escolhidos */
     public int repeat = 0;
+    /** Máscara de dias da semana usada quando repeat == 5 (ver Dates). */
+    public int weekdays = 0;
     /** id da próxima ocorrência já criada (evita duplicar ao concluir) */
     public long nextId = 0L;
 
@@ -39,6 +41,7 @@ public class Task {
         t.hasTime = hasTime;
         t.dueAt = dueAt;
         t.repeat = repeat;
+        t.weekdays = weekdays;
         t.createdAt = System.currentTimeMillis();
         return t;
     }
@@ -57,6 +60,7 @@ public class Task {
             o.put("createdAt", createdAt);
             o.put("completedAt", completedAt);
             o.put("repeat", repeat);
+            o.put("weekdays", weekdays);
             o.put("nextId", nextId);
         } catch (JSONException ignored) {
         }
@@ -76,6 +80,7 @@ public class Task {
         t.createdAt = o.optLong("createdAt", 0L);
         t.completedAt = o.optLong("completedAt", 0L);
         t.repeat = o.optInt("repeat", 0);
+        t.weekdays = o.optInt("weekdays", 0);
         t.nextId = o.optLong("nextId", 0L);
         return t;
     }

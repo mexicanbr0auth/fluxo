@@ -1,15 +1,20 @@
 package com.fluxo.tarefas;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -30,6 +35,8 @@ import android.widget.TextView;
 import com.fluxo.tarefas.data.Prefs;
 import com.fluxo.tarefas.data.Store;
 import com.fluxo.tarefas.model.Task;
+import com.fluxo.tarefas.reminder.ReminderNotifier;
+import com.fluxo.tarefas.reminder.ReminderScheduler;
 import com.fluxo.tarefas.ui.BarChartView;
 import com.fluxo.tarefas.ui.Dates;
 import com.fluxo.tarefas.ui.MeterView;
@@ -117,6 +124,51 @@ public class MainActivity extends Activity {
         refreshAll(false);
         selectPage(currentPage, false);
         animateEntrance();
+
+        ReminderNotifier.ensureChannel(this);
+        ReminderScheduler.syncAll(this);
+        requestNotificationPermission();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2501);
+        }
+    }
+
+    private boolean canNotify() {
+        return Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 2501 && grantResults.length > 0
+                && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            Ui.snackbar(this, p, "Permita notificações para receber os lembretes",
+                    null, null, 84);
+        }
+    }
+
+    private boolean exactAlarmsAllowed() {
+        if (Build.VERSION.SDK_INT < 31) return true;
+        AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+        return am != null && am.canScheduleExactAlarms();
+    }
+
+    private void openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT < 31) return;
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
     }
 
     @Override
@@ -819,7 +871,7 @@ public class MainActivity extends Activity {
         if (t.repeat > 0) {
             LinearLayout rep = Ui.row(this);
             rep.addView(Ui.image(this, R.drawable.ic_repeat, p.primary, 13));
-            TextView label = Ui.text(this, Dates.repeatLabel(t.repeat), 11.5f, p.primary, true);
+            TextView label = Ui.text(this, Dates.repeatLabel(t.repeat, t.weekdays), 11.5f, p.primary, true);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             labelLp.setMarginStart(Ui.dp(this, 4));
@@ -895,20 +947,25 @@ public class MainActivity extends Activity {
      * mantendo o horário do prazo. Retorna o horário da próxima ocorrência (0 se não houver).
      */
     private long persistDone(Task t) {
+        long nextDue = 0L;
         if (t.done && t.repeat > 0) {
             Task existing = t.nextId > 0 ? Store.find(this, t.nextId) : null;
             if (existing == null) {
                 Task next = t.copy();
-                next.dueAt = Dates.nextOccurrence(t.dueAt, t.repeat, System.currentTimeMillis());
+                next.dueAt = Dates.nextOccurrence(t.dueAt, t.repeat, t.weekdays, System.currentTimeMillis());
                 next.nextId = 0L;
                 t.nextId = next.id;
                 Store.upsert(this, t);
                 Store.upsert(this, next);
-                return next.dueAt;
+                nextDue = next.dueAt;
+            } else {
+                Store.upsert(this, t);
             }
+        } else {
+            Store.upsert(this, t);
         }
-        Store.upsert(this, t);
-        return 0L;
+        ReminderScheduler.syncAll(this);
+        return nextDue;
     }
 
     private String priorityLabel(int priority) {
@@ -948,7 +1005,7 @@ public class MainActivity extends Activity {
         }
         if (t.repeat > 0) {
             if (sub.length() > 0) sub.append(" • ");
-            sub.append(Dates.repeatLabel(t.repeat));
+            sub.append(Dates.repeatLabel(t.repeat, t.weekdays));
         }
         if (sub.length() == 0) sub.append(t.done ? "Concluída" : "Pendente");
 
@@ -973,14 +1030,17 @@ public class MainActivity extends Activity {
         items.add(new Ui.Item(R.drawable.ic_duplicate, "Duplicar", p.onSurface, () -> {
             Task copy = t.copy();
             Store.upsert(this, copy);
+            ReminderScheduler.schedule(this, copy);
             refreshAll(false);
             Ui.snackbar(this, p, "Tarefa duplicada", null, null, 84);
         }));
         items.add(new Ui.Item(R.drawable.ic_delete, "Excluir", p.error, () -> {
             Store.delete(this, t.id);
+            ReminderScheduler.cancel(this, t.id);
             refreshAll(false);
             Ui.snackbar(this, p, "Tarefa excluída", "Desfazer", () -> {
                 Store.upsert(this, t);
+                ReminderScheduler.schedule(this, t);
                 refreshAll(false);
             }, 84);
         }));
@@ -1186,6 +1246,46 @@ public class MainActivity extends Activity {
         });
         settingsBody.addView(lookCard);
 
+        addSectionLabel("Lembretes");
+        LinearLayout reminderCard = newCard();
+        addSwitchRow(reminderCard, R.drawable.ic_time,
+                "Alarme e notificação",
+                "Avisar no horário das tarefas",
+                Prefs.remindersEnabled(this), true, checked -> {
+                    Prefs.setRemindersEnabled(this, checked);
+                    if (checked) {
+                        ReminderNotifier.ensureChannel(this);
+                        ReminderScheduler.syncAll(this);
+                        requestNotificationPermission();
+                        if (!exactAlarmsAllowed()) {
+                            Ui.snackbar(this, p,
+                                    "Ative alarmes exatos para avisos pontuais",
+                                    "Permitir", this::openExactAlarmSettings, 84);
+                        }
+                    } else {
+                        ReminderScheduler.cancelAll(this);
+                    }
+                });
+        if (Prefs.remindersEnabled(this) && !exactAlarmsAllowed()) {
+            addActionRow(reminderCard, R.drawable.ic_info, "Alarmes exatos",
+                    "Toque para permitir avisos pontuais",
+                    p.onSurface, p.onSurfaceVariant, false, this::openExactAlarmSettings);
+        }
+        addActionRow(reminderCard, R.drawable.ic_check_circle, "Testar lembrete",
+                "Ver o som e a vibração agora", p.onSurface, p.onSurfaceVariant,
+                false, () -> {
+                    if (!canNotify()) {
+                        requestNotificationPermission();
+                        Ui.snackbar(this, p, "Permita notificações para testar",
+                                null, null, 84);
+                        return;
+                    }
+                    ReminderNotifier.showTest(this);
+                    Ui.snackbar(this, p, "Lembrete de teste enviado",
+                            null, null, 84);
+                });
+        settingsBody.addView(reminderCard);
+
         addSectionLabel("Personalização");
         LinearLayout personalCard = newCard();
         String name = Prefs.name(this);
@@ -1216,6 +1316,7 @@ public class MainActivity extends Activity {
                             "As " + doneTotal + " tarefas concluídas serão removidas.",
                             "Limpar", true, () -> {
                                 int removed = Store.clearCompleted(this);
+                                ReminderScheduler.syncAll(this);
                                 refreshAll(false);
                                 buildSettings();
                                 Ui.snackbar(this, p, removed + " tarefas removidas",
@@ -1230,6 +1331,7 @@ public class MainActivity extends Activity {
                         "Todas as tarefas serão removidas. Essa ação não pode ser desfeita.",
                         "Apagar tudo", true, () -> {
                             Store.save(this, new ArrayList<>());
+                            ReminderScheduler.cancelAll(this);
                             refreshAll(false);
                             buildSettings();
                             Ui.snackbar(this, p, "Lista apagada", null, null, 84);
@@ -1239,7 +1341,7 @@ public class MainActivity extends Activity {
         addSectionLabel("Sobre");
         LinearLayout aboutCard = newCard();
         addActionRow(aboutCard, R.drawable.ic_info, "Fluxo",
-                "Versão 1.0 • Material You 3", p.onSurface,
+                "Versão 1.1 • Material You 3", p.onSurface,
                 p.onSurfaceVariant, false, null);
         TextView note = Ui.text(this,
                 "As cores acompanham o papel de parede e o tema do sistema. "
